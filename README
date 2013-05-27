@@ -1,0 +1,30 @@
+su_server
+クライアントから受け取ったコマンドをsu_serverの実行ユーザーで実行するプログラム。
+su_serverをroot権限で実行させておくことにより、
+任意のコマンドをroot権限で実行させることができます。
+SC-04Eにおいては、たとえばsu_serverを/system/bin/mfescand
+として配置すればOKです。
+
+su_client_target
+su_serverに接続するためのAndroid端末上で動くプログラム。
+su_clientを/system/bin/suなどに配置すればsuコマンドの代わりに用いることができます。
+<使い方>
+shell@android: $ ./su_client                // root権限でshellを実行する
+ または
+shell@android: $ ./su_client -c 'ls -l /'   // root権限で「ls -l /」を実行する
+
+su_client_host
+su_serverに接続するためのPC上で動くプログラム。
+<使い方>
+$ adb forward tcp:1234 localabstract:su_server
+$ ./su_client                // root権限でshellを実行する
+ または
+$ ./su_client -c 'ls -l /'   // root権限で「ls -l /」を実行する
+
+
+!!!!注意!!!!
+su_serverはアクセス制御を行なっていません。
+したがって、su_clientコマンドを使うと任意のアプリから
+root権限でコマンドを実行出来てしまいます。
+あくまでも一時的な利用にとどめてください。
+

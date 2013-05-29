@@ -146,7 +146,7 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    if (listen(server_sock, 10) == -1) {
+    if (listen(server_sock, 20) == -1) {
         close(server_sock);
         perror("Could not listen");
     }
@@ -167,17 +167,20 @@ int main(int argc, char *argv[])
 
         if (!get_peer_ids(connect_d, &user_id, &group_id)) {
             std::cerr << "Could not get peer ids" << std::endl;
+            close(connect_d);
             continue;
         }
 
         if (user_id != get_shell_uid() && user_id != get_root_uid()) {
             std::cerr << "unauthorized user connection is ignored" << std::endl;
+            close(connect_d);
             continue;
         }
 
         cpid = fork();
         if (cpid < 0) {
             std::cerr << "Fork failed" << std::endl;
+            close(connect_d);
             continue;
         }
         if (cpid) { // parent

@@ -13,9 +13,24 @@
 #include <arpa/inet.h>
 
 #include <sys/wait.h>
+#include <pwd.h>
 
 typedef unsigned char uchar;
 typedef uint32_t data_size_t;
+
+unsigned get_root_uid() {
+    struct passwd* ppwd = getpwnam("root");
+    if (ppwd == NULL)
+        return 0;
+    return ppwd->pw_uid;
+}
+
+unsigned get_shell_uid() {
+    struct passwd* ppwd = getpwnam("shell");
+    if (ppwd == NULL)
+        return 2000;
+    return ppwd->pw_uid;
+}
 
 static bool send_data(int client_sock, const std::vector<uchar> &buff)
 {
@@ -46,7 +61,18 @@ static bool send_data(int client_sock, const std::vector<uchar> &buff)
     return true;
 }
 
-static std::string receive_command(int sock)
+static uint32_t receive_arg_cnt(int sock)
+{
+    uint32_t raw_cnt;
+    int ret = recv(sock, &raw_cnt, sizeof(raw_cnt), 0);
+    if (ret < 0) {
+        std::cerr << "Could not receive command length" << std::endl;
+        return 0;
+    }
+    return ntohl(raw_cnt);
+}
+
+static std::string receive_argument(int sock)
 {
     uint32_t raw_len;
     int ret = recv(sock, &raw_len, sizeof(raw_len), 0);
@@ -78,9 +104,25 @@ static std::string receive_command(int sock)
     return sstm.str();
 }
 
+bool get_peer_ids(int sock, uid_t *user_id, gid_t *group_id)
+{
+    struct ucred user_cred;
+    socklen_t len = sizeof(user_cred);
+    if (getsockopt(sock, SOL_SOCKET, SO_PEERCRED, &user_cred, &len) == -1)
+        return false;
+    *user_id = user_cred.uid;
+    *group_id = user_cred.gid;
+}
+
 
 int main(int argc, char *argv[])
 {
+    struct sigaction sa;
+    sa.sa_handler = SIG_IGN;
+    sa.sa_flags = SA_NOCLDWAIT;
+    if (sigaction(SIGCHLD, &sa, NULL) == -1)
+        perror("Could not register signal handler");
+
     int server_sock;
     const std::string abstract_name("su_server");
     server_sock = socket(PF_UNIX, SOCK_STREAM, 0);
@@ -114,43 +156,53 @@ int main(int argc, char *argv[])
 
     int connect_d;
     pid_t cpid;
+    uid_t user_id;
+    gid_t group_id;
     while (true) {
         connect_d = accept(server_sock, reinterpret_cast<sockaddr*>(&client_addr), &address_size);
-        if (connect_d == -1)
-            perror("Failed to connect to client");
+        if (connect_d == -1) {
+            std::cerr << "Failed to connect to client" << std::endl;
+            continue;
+        }
+
+        if (!get_peer_ids(connect_d, &user_id, &group_id)) {
+            std::cerr << "Could not get peer ids" << std::endl;
+            continue;
+        }
+
+        if (user_id != get_shell_uid() && user_id != get_root_uid()) {
+            std::cerr << "unauthorized user connection is ignored" << std::endl;
+            continue;
+        }
 
         cpid = fork();
         if (cpid < 0) {
             std::cerr << "Fork failed" << std::endl;
-            exit(1);
+            continue;
         }
-        if (cpid) {
-            // parent
+        if (cpid) { // parent
             close(connect_d);
-            waitpid(cpid, NULL, 0);
         } else {
-            std::string cmd = receive_command(connect_d);
+            uint32_t arg_cnt = receive_arg_cnt(connect_d);
+            std::vector<std::string> v_args;
+            for (int i = 0; i < arg_cnt; ++i)
+                v_args.push_back(receive_argument(connect_d));
+
+            const char *command = "/system/bin/sh";
+            const char **cmd_args = new const char* [v_args.size() + 2];
+            cmd_args[0] = command;
+            for (int i = 0; i < v_args.size(); ++i)
+                cmd_args[i + 1] = v_args[i].c_str();
+            cmd_args[v_args.size() + 1] = NULL;
+
             dup2(connect_d, STDOUT_FILENO);
             dup2(connect_d, STDERR_FILENO);
             dup2(connect_d, STDIN_FILENO);
             close(connect_d);
 
-            if (cmd == "/system/bin/sh") {
-                char *command = "/system/bin/sh";
-                char *cmd_args[2];
-                cmd_args[0] = command;
-                cmd_args[1] = NULL;
-                execvp(command, cmd_args);
-            } else { // /system/bin/sh -c 'some command'
-                char *command = "/system/bin/sh";
-                char *cmd_args[4];
-                char *cmd_cstr = (char *)cmd.c_str();
-                cmd_args[0] = command;
-                cmd_args[1] = "-c";
-                cmd_args[2] = &cmd_cstr[18];
-                cmd_args[3] = NULL;
-                execvp(command, cmd_args);
-            }
+            setuid(user_id);
+            setgid(group_id);
+            execvp(command, (char **)cmd_args);
         }
     }
 

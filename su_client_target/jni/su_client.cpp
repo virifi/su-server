@@ -22,7 +22,21 @@
 typedef unsigned char uchar;
 typedef uint32_t data_size_t;
 
-bool send_command(int sock, const std::string cmd)
+bool send_arg_cnt(int sock, uint32_t cnt)
+{
+    uint32_t n_cnt = htonl(cnt);
+    int sent = write(sock, &n_cnt, sizeof(n_cnt));
+    if (sent == 0) {
+        std::cerr << "connection closed" << std::endl;
+        return false;
+    } else if (sent == -1) {
+        std::cerr << "could not write to socket" << std::endl;
+        return false;
+    }
+    return true;
+}
+
+bool send_argument(int sock, const std::string cmd)
 {
     std::vector<char> data;
     std::copy(cmd.begin(), cmd.end(), std::back_inserter(data));
@@ -102,19 +116,6 @@ static void* remote_stdin_write_thread(void *x)
 
 int main(int argc, char *argv[])
 {
-    std::stringstream sstm;
-    if (argc == 1) {
-        sstm << "/system/bin/sh";
-    } else if (argc == 3) {
-        sstm << "/system/bin/sh -c " << argv[2];
-    } else {
-        printf("usage:\n");
-        printf("%s\n", argv[0]);
-        printf("%s -c 'some command'\n", argv[0]);
-        exit(1);
-    }
-    std::string cmd = sstm.str();
-
     const std::string abstract_name("su_server");
     int sock = socket(PF_UNIX, SOCK_STREAM, 0);
     if (sock == -1)
@@ -137,7 +138,9 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    send_command(sock, cmd);
+    send_arg_cnt(sock, argc - 1);
+    for (int i = 1; i < argc; ++i)
+        send_argument(sock, argv[i]);
 
     pthread_t t_read, t_write;
     if (pthread_create(&t_read, NULL, remote_stdout_read_thread, &sock) == -1) {

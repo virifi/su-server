@@ -171,11 +171,13 @@ int main(int argc, char *argv[])
             continue;
         }
 
+        /*
         if (user_id != get_shell_uid() && user_id != get_root_uid()) {
             std::cerr << "unauthorized user connection is ignored" << std::endl;
             close(connect_d);
             continue;
         }
+        */
 
         cpid = fork();
         if (cpid < 0) {
@@ -191,7 +193,7 @@ int main(int argc, char *argv[])
             for (int i = 0; i < arg_cnt; ++i)
                 v_args.push_back(receive_argument(connect_d));
 
-            const char *command = "/system/bin/sh";
+            const char *command = "/system/xbin/superuser_su";
             const char **cmd_args = new const char* [v_args.size() + 2];
             cmd_args[0] = command;
             for (int i = 0; i < v_args.size(); ++i)
@@ -202,6 +204,9 @@ int main(int argc, char *argv[])
             dup2(connect_d, STDERR_FILENO);
             dup2(connect_d, STDIN_FILENO);
             close(connect_d);
+
+            setuid(user_id);
+            setgid(group_id);
 
             execvp(command, (char **)cmd_args);
         }

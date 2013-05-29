@@ -1,9 +1,12 @@
 su_server
-クライアントから受け取ったコマンドをsu_serverの実行ユーザーで実行するプログラム。
-su_serverをroot権限で実行させておくことにより、
-任意のコマンドをroot権限で実行させることができます。
-SC-04Eにおいては、たとえばsu_serverを/system/bin/mfescand
-として配置すればOKです。
+クライアントから受け取ったコマンドをCWM版suに受け渡すプログラム
+<使用方法(SC-04E)>
+su_server を /system/bin/mfescand として配置
+superuser_su を /system/xbin/superuser_su として配置し、
+chown 0.0 /system/xbin/superuser_su
+chmod 6755 /system/xbin/superuser_su
+としておく。
+
 
 su_client_target
 su_serverに接続するためのAndroid端末上で動くプログラム。

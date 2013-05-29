@@ -200,8 +200,6 @@ int main(int argc, char *argv[])
             dup2(connect_d, STDIN_FILENO);
             close(connect_d);
 
-            setuid(user_id);
-            setgid(group_id);
             execvp(command, (char **)cmd_args);
         }
     }
